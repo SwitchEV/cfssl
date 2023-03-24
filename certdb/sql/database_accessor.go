@@ -32,6 +32,10 @@ SELECT %s FROM certificates
 SELECT %s FROM certificates
 	WHERE CURRENT_TIMESTAMP < expiry;`
 
+	selectAllUnexpiredByAKISQL = `
+SELECT %s FROM certificates
+	WHERE (CURRENT_TIMESTAMP < expiry AND authority_key_identifier = ?);`
+
 	selectAllRevokedAndUnexpiredWithLabelSQL = `
 SELECT %s FROM certificates
 	WHERE CURRENT_TIMESTAMP < expiry AND status='revoked' AND ca_label= ?;`
@@ -194,6 +198,21 @@ func (d *Accessor) GetUnexpiredCertificatesByLabel(labels []string) (crs []certd
 	}
 
 	err = d.db.Select(&crs, d.db.Rebind(query), args...)
+	if err != nil {
+		return nil, wrapSQLError(err)
+	}
+
+	return crs, nil
+}
+
+// GetUnexpiredCertificatesByAKI gets all unexpired certificate from db, filtered by authority key identifier (AKI).
+func (d *Accessor) GetUnexpiredCertificatesByAKI(aki string) (crs []certdb.CertificateRecord, err error) {
+	err = d.checkDB()
+	if err != nil {
+		return nil, err
+	}
+
+	err = d.db.Select(&crs, fmt.Sprintf(d.db.Rebind(selectAllUnexpiredByAKISQL), sqlstruct.Columns(certdb.CertificateRecord{})), aki)
 	if err != nil {
 		return nil, wrapSQLError(err)
 	}

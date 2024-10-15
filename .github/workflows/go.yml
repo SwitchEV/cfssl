@@ -10,7 +10,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        go: ["1.18", "1.19"]
+        go: [stable, oldstable]
     services:
       # Label used to access the service container
       postgres:
@@ -50,10 +50,10 @@ jobs:
       - run: psql -c 'create database certdb_development;' -U postgres;
       - run: mysql -e 'create database certdb_development;' -u root;
       - run: mysql -e 'SET global sql_mode = 0;' -u root;
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
 
       - name: Set up Go
-        uses: actions/setup-go@v2
+        uses: actions/setup-go@v5
         with:
           go-version: ${{ matrix.go }}
 
@@ -64,15 +64,15 @@ jobs:
       - run: ./bin/goose -path certdb/mysql up;
       - name: Test
         run: ./test.sh
-      - uses: codecov/codecov-action@v3
+      - uses: codecov/codecov-action@v4
 
   golangci:
     name: lint
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/setup-go@v3
+      - uses: actions/setup-go@v5
         with:
           go-version: 1.18
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - name: golangci-lint
-        uses: golangci/golangci-lint-action@v3
+        uses: golangci/golangci-lint-action@v4

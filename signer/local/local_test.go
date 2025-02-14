@@ -31,8 +31,7 @@ import (
 	"github.com/cloudflare/cfssl/helpers"
 	"github.com/cloudflare/cfssl/log"
 	"github.com/cloudflare/cfssl/signer"
-
-	"github.com/google/certificate-transparency-go"
+	ct "github.com/google/certificate-transparency-go"
 	"github.com/zmap/zlint/v3/lint"
 )
 
@@ -362,6 +361,12 @@ var csrTests = []csrTest{
 		file:          "testdata/rsa-old.csr",
 		keyAlgo:       "rsa",
 		keyLen:        2048,
+		errorCallback: nil,
+	},
+	{
+		file:          "testdata/ed25519.csr",
+		keyAlgo:       "ed25519",
+		keyLen:        256,
 		errorCallback: nil,
 	},
 }
@@ -1540,6 +1545,7 @@ func TestLint(t *testing.T) {
 
 	ignoredLintSourcesRegistry, err := lint.GlobalRegistry().Filter(lint.FilterOptions{
 		ExcludeSources: lint.SourceList{lint.CABFBaselineRequirements},
+		ExcludeNames:   []string{"e_ecdsa_allowed_ku"},
 	})
 	if err != nil {
 		t.Fatalf("failed to construct ignoredLintSourcesRegistry: %v", err)
@@ -1567,20 +1573,22 @@ func TestLint(t *testing.T) {
 			name:         "lint results above err level",
 			signer:       lintSigner,
 			lintErrLevel: lint.Notice,
-			expectedErr:  errors.New("pre-issuance linting found 2 error results"),
+			expectedErr:  errors.New("pre-issuance linting found 3 error results"),
 			expectedErrResults: map[string]lint.LintResult{
 				"e_sub_cert_aia_does_not_contain_ocsp_url": {Status: 6},
 				"e_dnsname_not_valid_tld":                  {Status: 6},
+				"e_ecdsa_allowed_ku":                       {Status: 6, Details: "Certificate contains invalid key usage(s): KeyUsageKeyEncipherment"},
 			},
 		},
 		{
 			name:         "lint results below err level",
 			signer:       lintSigner,
 			lintErrLevel: lint.Warn,
-			expectedErr:  errors.New("pre-issuance linting found 2 error results"),
+			expectedErr:  errors.New("pre-issuance linting found 3 error results"),
 			expectedErrResults: map[string]lint.LintResult{
 				"e_sub_cert_aia_does_not_contain_ocsp_url": {Status: 6},
 				"e_dnsname_not_valid_tld":                  {Status: 6},
+				"e_ecdsa_allowed_ku":                       {Status: 6, Details: "Certificate contains invalid key usage(s): KeyUsageKeyEncipherment"},
 			},
 		},
 		{
@@ -1588,9 +1596,10 @@ func TestLint(t *testing.T) {
 			signer:       lintSigner,
 			lintErrLevel: lint.Notice,
 			lintRegistry: ignoredLintNameRegistry,
-			expectedErr:  errors.New("pre-issuance linting found 1 error results"),
+			expectedErr:  errors.New("pre-issuance linting found 2 error results"),
 			expectedErrResults: map[string]lint.LintResult{
 				"e_sub_cert_aia_does_not_contain_ocsp_url": {Status: 6},
+				"e_ecdsa_allowed_ku":                       {Status: 6, Details: "Certificate contains invalid key usage(s): KeyUsageKeyEncipherment"},
 			},
 		},
 		{
@@ -1611,26 +1620,16 @@ func TestLint(t *testing.T) {
 			} else if err != nil && tc.expectedErr != nil {
 				actual := err.Error()
 				expected := tc.expectedErr.Error()
-				if actual != expected {
-					t.Errorf("Expected err %q got %q", expected, actual)
+				if expected != actual {
+					t.Fatalf("expected: %v, got: %v", expected, actual)
 				}
 				if len(tc.expectedErrResults) > 0 {
 					le, ok := err.(*LintError)
 					if !ok {
 						t.Fatalf("expected LintError type err, got %v", err)
 					}
-					if count := len(le.ErrorResults); count != len(tc.expectedErrResults) {
-						t.Fatalf("expected %d LintError results, got %d", len(tc.expectedErrResults), len(le.ErrorResults))
-					}
-					for name, result := range le.ErrorResults {
-						if result.Status != tc.expectedErrResults[name].Status {
-							t.Errorf("expected error from lint %q to have status %d not %d",
-								name, tc.expectedErrResults[name].Status, result.Status)
-						}
-						if result.Details != tc.expectedErrResults[name].Details {
-							t.Errorf("expected error from lint %q to have details %q not %q",
-								name, tc.expectedErrResults[name].Details, result.Details)
-						}
+					if !reflect.DeepEqual(tc.expectedErrResults, le.ErrorResults) {
+						t.Fatalf("expected: %v, got: %v", tc.expectedErrResults, le.ErrorResults)
 					}
 				}
 			}

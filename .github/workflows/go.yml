@@ -10,7 +10,11 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        go: ["1.18", "1.19"]
+        # starting with go 1.24 the GODEBUG=x509sha1=1 flag has been removed.
+        # many tests rely on sha1 certificates. After resolving #1413 we can
+        # run these on stable and oldstable again. Min version (1.20) can
+        # always be run.
+        go: ['1.23', '1.22', '1.20']
     services:
       # Label used to access the service container
       postgres:
@@ -50,10 +54,10 @@ jobs:
       - run: psql -c 'create database certdb_development;' -U postgres;
       - run: mysql -e 'create database certdb_development;' -u root;
       - run: mysql -e 'SET global sql_mode = 0;' -u root;
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
 
       - name: Set up Go
-        uses: actions/setup-go@v2
+        uses: actions/setup-go@v5
         with:
           go-version: ${{ matrix.go }}
 
@@ -64,15 +68,21 @@ jobs:
       - run: ./bin/goose -path certdb/mysql up;
       - name: Test
         run: ./test.sh
-      - uses: codecov/codecov-action@v3
+      - uses: codecov/codecov-action@v4
 
   golangci:
     name: lint
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/setup-go@v3
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
         with:
-          go-version: 1.18
-      - uses: actions/checkout@v3
+          go-version: "1.20"
       - name: golangci-lint
-        uses: golangci/golangci-lint-action@v3
+        uses: golangci/golangci-lint-action@v6
+        with:
+          # There is a breaking change in 1.58 that causes the linter not to recognize 
+          # internal imports or standard library imports and results in linting errors
+          # that cannot be ignored.
+          # e.g certdb/certdb.go:5:2: could not import encoding/json (Config.Importer.Import(encoding/json) returned nil but no error) (typecheck)
+          version: v1.57
